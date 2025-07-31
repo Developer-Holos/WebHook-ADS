@@ -107,18 +107,46 @@ app.post("/facebook/webhook", async (req, res) => {
 
 // ✅ Crear lead en Kommo
 async function sendToKommo(name, phone, click_id, ad_info, message) {
-  const payload = {
+  // PAYLOAD KOMMO HOLOS
+  // const payload = {
+  //   name: `${name} (WhatsApp)`,               
+  //   pipeline_id: PIPELINE_ID,  
+  //   custom_fields_values: [
+  //     { field_id: 797807, values: [{ value: click_id }] },                          // Click ID
+  //     { field_id: 797809, values: [{ value: ad_info.campaign_name }] },             // Campaña
+  //     { field_id: 797811, values: [{ value: ad_info.campaign_id }] },               // ID Campaña
+  //     { field_id: 797813, values: [{ value: ad_info.adset_name }] },                // Conjunto Anuncios
+  //     { field_id: 797815, values: [{ value: ad_info.adset_id }] },                  // ID Conjunto Anuncios
+  //     { field_id: 797817, values: [{ value: ad_info.ad_name }] },                   // Nombre Anuncio
+  //     { field_id: 797819, values: [{ value: ad_info.ad_id }] },                     // ID Anuncio
+  //     { field_id: 797821, values: [{ value: message }] }                            // Mensaje
+  //   ]
+  // };
+
+  // PAYLOAD KILLAMUSE
+    const payload = {
     name: `${name} (WhatsApp)`,               
     pipeline_id: PIPELINE_ID,  
     custom_fields_values: [
-      { field_id: 797807, values: [{ value: click_id }] },                          // Click ID
-      { field_id: 797809, values: [{ value: ad_info.campaign_name }] },             // Campaña
-      { field_id: 797811, values: [{ value: ad_info.campaign_id }] },               // ID Campaña
-      { field_id: 797813, values: [{ value: ad_info.adset_name }] },                // Conjunto Anuncios
-      { field_id: 797815, values: [{ value: ad_info.adset_id }] },                  // ID Conjunto Anuncios
-      { field_id: 797817, values: [{ value: ad_info.ad_name }] },                   // Nombre Anuncio
-      { field_id: 797819, values: [{ value: ad_info.ad_id }] },                     // ID Anuncio
-      { field_id: 797821, values: [{ value: message }] }                            // Mensaje
+      { field_id: 542218, values: [{ value: click_id }] },                          // Click ID
+      { field_id: 542220, values: [{ value: ad_info.campaign_name }] },             // Campaña
+      { field_id: 542222, values: [{ value: ad_info.campaign_id }] },               // ID Campaña
+      { field_id: 542224, values: [{ value: ad_info.adset_name }] },                // Conjunto Anuncios
+      { field_id: 542226, values: [{ value: ad_info.adset_id }] },                  // ID Conjunto Anuncios
+      { field_id: 542276, values: [{ value: ad_info.ad_name }] },                   // Nombre Anuncio
+      { field_id: 542278, values: [{ value: ad_info.ad_id }] },                     // ID Anuncio
+      { field_id: 542280, values: [{ value: message }] }                            // Mensaje
+    ],
+    contacts: [
+      {
+        first_name: name,
+        custom_fields_values: [
+          {
+            field_code: "PHONE",
+            values: [{ value: phone, enum_code: "WORK" }]
+          }
+        ]
+      }
     ]
   };
 
