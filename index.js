@@ -3,6 +3,7 @@ const bodyParser = require("body-parser");
 const axios = require("axios");
 const crypto = require("crypto");
 
+
 const app = express();
 const PORT = 3000;
 
@@ -85,8 +86,10 @@ app.post("/facebook/webhook", async (req, res) => {
             message: text,
           };
           // Enviar a Kommo
+
           await sendToKommo(name, from, click_id, ad_info, text);
           console.log("✅ Lead enviado a Kommo:", from);
+          
         } catch (err) {
           if (err.response?.data) {
             console.dir(err.response.data, { depth: null });
@@ -122,40 +125,73 @@ async function sendToKommo(name, phone, click_id, ad_info, message) {
   //     { field_id: 797821, values: [{ value: message }] }                            // Mensaje
   //   ]
   // };
+  try {
+    const contactsRes = await axios.get(`https://killamuse04.kommo.com/api/v4/contacts?query=${phone}`,{ headers: { Authorization: `Bearer ${KOMMO_SECRET_TOKEN}` } });
+    const contacts = contactsRes.data?._embedded?.contacts || [];
+    let activeLead = null;
+    if (contacts.length!== 0) {
+      console.log("✅ Hay información del contacto");
+      const withLeadsRes = await axios.get( `https://killamuse04.kommo.com/api/v4/contacts?with=leads&query=${phone}`,{ headers: { Authorization: `Bearer ${KOMMO_SECRET_TOKEN}` } });
+      const fullContacts = withLeadsRes.data?._embedded?.contacts || [];
+      for (const contact of fullContacts) {
+        const leads = contact._embedded?.leads || [];
+        activeLead = leads.find((lead) => lead.status_id !== 142 && lead.status_id !== 143);
+        if (activeLead) break;
+      }
+      if (activeLead) {
+        const payload = {
+          id: activeLead.id,
+          pipeline_id: PIPELINE_ID,
+          custom_fields_values: [
+            { field_id: 542218, values: [{ value: click_id }] }, // Click ID
+            { field_id: 542220, values: [{ value: ad_info.campaign_name }] },
+            { field_id: 542222, values: [{ value: ad_info.campaign_id }] },
+            { field_id: 542224, values: [{ value: ad_info.adset_name }] },
+            { field_id: 542226, values: [{ value: ad_info.adset_id }] },
+            { field_id: 542276, values: [{ value: ad_info.ad_name }] },
+            { field_id: 542278, values: [{ value: ad_info.ad_id }] },
+            { field_id: 542280, values: [{ value: message }] }
+          ]
+        };
+        await axios.patch(KOMMO_WEBHOOK_URL, [payload], {
+          headers: {
+            Authorization: `Bearer ${KOMMO_SECRET_TOKEN}`,
+            "Content-Type": "application/json"
+          }
+        });
+        console.log("✅ Lead actualizado correctamente:", activeLead.id);
+      } else {
+        console.log("📄 Mandar a Excel: contacto sin lead activo");
+      }
+    }else{
+      console.log("Mandar a excel")
+    }
+  } catch (err) {
+    console.error("❌ Error en sendToKommo:", err.response?.data || err.message);
+  }
 
   // PAYLOAD KILLAMUSE
-    const payload = {
-    name: `${name} (WhatsApp)`,               
-    pipeline_id: PIPELINE_ID,  
-    custom_fields_values: [
-      { field_id: 542218, values: [{ value: click_id }] },                          // Click ID
-      { field_id: 542220, values: [{ value: ad_info.campaign_name }] },             // Campaña
-      { field_id: 542222, values: [{ value: ad_info.campaign_id }] },               // ID Campaña
-      { field_id: 542224, values: [{ value: ad_info.adset_name }] },                // Conjunto Anuncios
-      { field_id: 542226, values: [{ value: ad_info.adset_id }] },                  // ID Conjunto Anuncios
-      { field_id: 542276, values: [{ value: ad_info.ad_name }] },                   // Nombre Anuncio
-      { field_id: 542278, values: [{ value: ad_info.ad_id }] },                     // ID Anuncio
-      { field_id: 542280, values: [{ value: message }] }                            // Mensaje
-    ],
-    contacts: [
-      {
-        first_name: name,
-        custom_fields_values: [
-          {
-            field_code: "PHONE",
-            values: [{ value: phone, enum_code: "WORK" }]
-          }
-        ]
-      }
-    ]
-  };
+  //   const payload = {
+  //   name: `${name} (WhatsApp)`,               
+  //   pipeline_id: PIPELINE_ID,  
+  //   custom_fields_values: [
+  //     { field_id: 542218, values: [{ value: click_id }] },                          // Click ID
+  //     { field_id: 542220, values: [{ value: ad_info.campaign_name }] },             // Campaña
+  //     { field_id: 542222, values: [{ value: ad_info.campaign_id }] },               // ID Campaña
+  //     { field_id: 542224, values: [{ value: ad_info.adset_name }] },                // Conjunto Anuncios
+  //     { field_id: 542226, values: [{ value: ad_info.adset_id }] },                  // ID Conjunto Anuncios
+  //     { field_id: 542276, values: [{ value: ad_info.ad_name }] },                   // Nombre Anuncio
+  //     { field_id: 542278, values: [{ value: ad_info.ad_id }] },                     // ID Anuncio
+  //     { field_id: 542280, values: [{ value: message }] }                            // Mensaje
+  //   ],
+  // };
+  // await axios.post(KOMMO_WEBHOOK_URL, [payload], {
+  //   headers: {
+  //     "Authorization": `Bearer ${KOMMO_SECRET_TOKEN}`,
+  //     "Content-Type": "application/json"
+  //   }
+  // });
 
-  await axios.post(KOMMO_WEBHOOK_URL, [payload], {
-    headers: {
-      "Authorization": `Bearer ${KOMMO_SECRET_TOKEN}`,
-      "Content-Type": "application/json"
-    }
-  });
 }
 
 // ✅ Ruta para simular conversión
