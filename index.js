@@ -54,6 +54,8 @@ app.get("/facebook/webhook", (req, res) => {
 // ✅ Webhook de mensajes entrantes desde WhatsApp
 app.post("/facebook/webhook", async (req, res) => {
   const body = req.body;
+  // 🪵 Imprime todo el body recibido del webhook (para debug completo)
+  console.dir(body, { depth: null });
   if (body.object !== "whatsapp_business_account") return res.sendStatus(400);
   for (const entry of body.entry) {
     for (const change of entry.changes) {
