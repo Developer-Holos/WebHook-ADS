@@ -217,37 +217,59 @@ app.post("/conversion", async (req, res) => {
   });
 });
 
-// ✅ Envío a Meta CAPI
-async function sendMetaConversion(click_id, phone) {
-  const url = `https://graph.facebook.com/v19.0/${PIXEL_ID}/events?access_token=${ACCESS_TOKEN}`;
-  const hashedPhone = hashSHA256(phone);
 
+
+
+// LEAD GANADO
+app.post("/kommo/webhook", async (req, res) => {
+  const leadUpdate = req.body?.leads?.update?.[0];
+  if (!leadUpdate) return res.sendStatus(200);
+  // Solo si pasó a Ganado (status_id = 142 por defecto)
+  if (leadUpdate.status_id === 142) {
+    const fields = leadUpdate.custom_fields_values || [];
+    const getFieldValue = (name) => {
+      const field = fields.find(f => f.field_name === name);
+      return field?.values?.[0]?.value || null;
+    };
+    const click_id = getFieldValue("Click ID");
+    if (click_id) {
+      console.log("Click ID LEAD", click_id)
+      await sendMetaConversion(click_id);
+    } else {
+      console.error("❌ Faltan datos para enviar CAPI:", { click_id });
+    }
+  }
+  res.sendStatus(200);
+});
+
+// ✅ Envío a Meta CAPI
+async function sendMetaConversion(click_id) {
+  const url = `https://graph.facebook.com/v19.0/${PIXEL_ID}/events?access_token=${ACCESS_TOKEN}`;
+  const eventTime = Math.floor(Date.now() / 1000);
+  const page_id = "361404980388508"
   const payload = {
     data: [
       {
-        event_name: "Purchase",
-        event_time: Math.floor(Date.now() / 1000),
-        action_source: "website",
-        event_source_url: "https://tusitio.com",
-        event_id: click_id,
+        action_source: "business_messaging",
+        event_name: "Purchase", 
+        event_time: eventTime,
+        messaging_channel: "whatsapp",
+        user_data: {
+          ctwa_clid: click_id,  
+          page_id: page_id      
+        },
         custom_data: {
           currency: "USD",
-          value: 99.99,
-        },
-        user_data: {
-          fbp: click_id,
-          ph: hashedPhone,
-        },
-      },
-    ],
-    test_event_code: TEST_EVENT_CODE,
+          value: 100
+        }
+      }
+    ]
   };
-
   try {
     const response = await axios.post(url, payload);
-    console.log("📈 Conversión enviada a Meta:", response.data);
+    console.log("📈 Conversión enviada a Meta CAPI:", response.data);
   } catch (error) {
-    console.error("❌ Error al enviar conversión:", error.response?.data || error.message);
+    console.error("❌ Error al enviar conversión a Meta CAPI:", error.response?.data || error.message);
   }
 }
 
