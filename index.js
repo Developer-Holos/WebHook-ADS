@@ -241,7 +241,7 @@ app.post("/kommo/webhook", async (req, res) => {
   //     console.error("❌ Faltan datos para enviar CAPI:", { click_id });
   //   }
   // }
-  // res.sendStatus(200);
+  res.sendStatus(200);
 });
 
 // ✅ Envío a Meta CAPI
