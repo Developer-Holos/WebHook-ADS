@@ -229,21 +229,21 @@ app.post("/kommo/webhook", async (req, res) => {
   const leadUpdate = req.body?.leads?.status?.[0];
   if (!leadUpdate) return res.sendStatus(200);
   console.log("Status ID recibido:", leadUpdate.status_id);
-  // if (leadUpdate.status_id === "555555") {
-  //   const fields = leadUpdate.custom_fields_values || [];
-  //   const getFieldValue = (name) => {
-  //     const field = fields.find(f => f.field_name === name);
-  //     return field?.values?.[0]?.value || null;
-  //   };
-  //   const click_id = getFieldValue("Click ID");
+  if (leadUpdate.status_id === "89830699") {
+    const fields = leadUpdate.custom_fields_values || [];
+    const getFieldValue = (name) => {
+      const field = fields.find(f => f.field_name === name);
+      return field?.values?.[0]?.value || null;
+    };
+    const click_id = getFieldValue("Click ID");
 
-  //   if (click_id) {
-  //     console.log("Click ID LEAD", click_id);
-  //     await sendMetaConversion(click_id);
-  //   } else {
-  //     console.error("❌ Faltan datos para enviar CAPI:", { click_id });
-  //   }
-  // }
+    if (click_id) {
+      console.log("Click ID LEAD", click_id);
+      await sendMetaConversion(click_id);
+    } else {
+      console.error("❌ Faltan datos para enviar CAPI:", { click_id });
+    }
+  }
   res.sendStatus(200);
 });
 
