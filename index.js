@@ -195,60 +195,48 @@ async function sendToKommo(name, phone, click_id, ad_info, message) {
 
 }
 
-// ✅ Ruta para simular conversión
-app.post("/conversion", async (req, res) => {
-  const { phone } = req.body;
-  const lead = leads[phone];
-
-  if (!lead) {
-    return res.status(404).json({
-      status: "error",
-      message: `No se encontró tracking para ${phone}`,
-    });
-  }
-
-  console.log(`💰 Simulando conversión para ${phone}`);
-  await sendMetaConversion(lead.click_id, phone);
-
-  res.json({
-    status: "success",
-    message: `Conversión simulada para ${phone}`,
-    tracking: lead,
-  });
-});
-
 
 
 
 // LEAD GANADO
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+async function fetchLeadDetails(leadId) {
+  const url = `https://killamuse04.kommo.com/api/v4/leads/${leadId}`;
+  try {
+    const response = await axios.get(url, {
+      headers: { Authorization: `Bearer ${KOMMO_SECRET_TOKEN}` }
+    });
+    console.log("RESPONSE",response)
+    return response.data.leads[0];
+  } catch (error) {
+    console.error('Error fetching lead details:', error.response?.data || error.message);
+    return null;
+  }
+}
 function getFieldValueById(fields = [], fieldId) {
   if (!fields || !Array.isArray(fields)) return null;
-  const field = fields.find(f => f.field_id === fieldId);
+  const field = fields.find(f => f.field_id.toString() === fieldId.toString());
   return field?.values?.[0]?.value || null;
 }
+
 app.post("/kommo/webhook", async (req, res) => {
   const CLICK_ID_FIELD_ID = 542218;
   console.log("RECIBIENDO WEBHOOK")
   const leadUpdate = req.body?.leads?.status?.[0];
-  console.log("leadUpdate completo:", JSON.stringify(leadUpdate, null, 2));
-  console.log("req.body.leads completo:", JSON.stringify(req.body.leads, null, 2));
   if (!leadUpdate) return res.sendStatus(200);
-  console.log("Status ID recibido:", leadUpdate.status_id);
   if (leadUpdate.status_id === "89830699") {
-    let click_id = getFieldValueById(leadUpdate.custom_fields_values, CLICK_ID_FIELD_ID);
-    if (!click_id && req.body?.contacts) {
-      const contactUpdate =
-        req.body.contacts.status?.[0] ||
-        req.body.contacts.update?.[0];
-        click_id = getFieldValueById(contactUpdate?.custom_fields_values, CLICK_ID_FIELD_ID);
+    const leadDetails = await fetchLeadDetails(leadUpdate.id);
+    if (!leadDetails) {
+      console.error('No se pudo obtener detalles del lead');
+      return res.sendStatus(500);
     }
+    const click_id = getFieldValueById(leadDetails.custom_fields_values, CLICK_ID_FIELD_ID);
     if (click_id) {
       console.log("✅ Click ID encontrado:", click_id);
       await sendMetaConversion(click_id);
     } else {
-      console.error("❌ Faltan datos para enviar CAPI: No se encontró Click ID");
+      console.error("❌ No se encontró Click ID en detalles del lead");
     }
   }
   res.sendStatus(200);
