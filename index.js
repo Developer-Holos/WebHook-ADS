@@ -207,16 +207,16 @@ async function fetchLeadDetails(leadId) {
     const response = await axios.get(url, {
       headers: { Authorization: `Bearer ${KOMMO_SECRET_TOKEN}` }
     });
-    console.log("RESPONSE LEADS",response)
     return response.data.leads[0];
   } catch (error) {
     console.error('Error fetching lead details:', error.response?.data || error.message);
     return null;
   }
 }
-function getFieldValueById(fields = [], fieldId) {
+
+function getClickIdFromFields(fields = []) {
   if (!fields || !Array.isArray(fields)) return null;
-  const field = fields.find(f => f.field_id.toString() === fieldId.toString());
+  const field = fields.find(f => f.field_id === 542218);
   return field?.values?.[0]?.value || null;
 }
 
@@ -231,7 +231,7 @@ app.post("/kommo/webhook", async (req, res) => {
       console.error('No se pudo obtener detalles del lead');
       return res.sendStatus(500);
     }
-    const click_id = getFieldValueById(leadDetails.custom_fields_values, CLICK_ID_FIELD_ID);
+    const click_id = getClickIdFromFields(leadDetails.custom_fields_values);
     if (click_id) {
       console.log("✅ Click ID encontrado:", click_id);
       await sendMetaConversion(click_id);
