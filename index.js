@@ -231,9 +231,8 @@ function getFieldValueById(fields = [], fieldId) {
 app.post("/kommo/webhook", async (req, res) => {
   const CLICK_ID_FIELD_ID = 542218;
   console.log("RECIBIENDO WEBHOOK")
-  console.log(req.body)
-  console.log("custom_fields_values leadUpdate:", JSON.stringify(leadUpdate.custom_fields_values, null, 2));
   const leadUpdate = req.body?.leads?.status?.[0];
+  console.log("custom_fields_values leadUpdate:", JSON.stringify(leadUpdate.custom_fields_values, null, 2));
   if (!leadUpdate) return res.sendStatus(200);
   console.log("Status ID recibido:", leadUpdate.status_id);
   if (leadUpdate.status_id === "89830699") {
