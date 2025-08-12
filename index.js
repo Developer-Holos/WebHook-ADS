@@ -208,7 +208,7 @@ async function fetchLeadDetails(leadId) {
       headers: { Authorization: `Bearer ${KOMMO_SECRET_TOKEN}` }
     });
     console.log("RESPONSE LEADS completa:", JSON.stringify(response.data, null, 2));
-    return response.data._embedded?.leads?.[0] || response.data.lead || null;
+    return response.data;
   } catch (error) {
     console.error('Error fetching lead details:', error.response?.data || error.message);
     return null;
