@@ -228,6 +228,7 @@ app.post("/kommo/webhook", async (req, res) => {
   console.log(req.body)
   const leadUpdate = req.body?.leads?.update?.[0];
   if (!leadUpdate) return res.sendStatus(200);
+  console.log("Status ID recibido:", leadUpdate.status_id);
   // Solo si pasó a Ganado (status_id = 142 por defecto)
   if (leadUpdate.status_id === 142) {
     const fields = leadUpdate.custom_fields_values || [];
