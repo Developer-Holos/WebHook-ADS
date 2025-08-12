@@ -222,29 +222,31 @@ app.post("/conversion", async (req, res) => {
 
 // LEAD GANADO
 app.post("/kommo/webhook", async (req, res) => {
-  const leadUpdate = req.body?.leads?.update?.[0];
-  if (!leadUpdate) return res.sendStatus(200);
-  // Solo si pasó a Ganado (status_id = 142 por defecto)
-  if (leadUpdate.status_id === 142) {
-    const fields = leadUpdate.custom_fields_values || [];
-    const getFieldValue = (name) => {
-      const field = fields.find(f => f.field_name === name);
-      return field?.values?.[0]?.value || null;
-    };
-    const click_id = getFieldValue("Click ID");
-    if (click_id) {
-      console.log("Click ID LEAD", click_id)
-      await sendMetaConversion(click_id);
-    } else {
-      console.error("❌ Faltan datos para enviar CAPI:", { click_id });
-    }
-  }
-  res.sendStatus(200);
+  console.log("RECIBIENDO WEBHOOK")
+  console.log(req.body)
+  // const leadUpdate = req.body?.leads?.update?.[0];
+  // if (!leadUpdate) return res.sendStatus(200);
+  // // Solo si pasó a Ganado (status_id = 142 por defecto)
+  // if (leadUpdate.status_id === 142) {
+  //   const fields = leadUpdate.custom_fields_values || [];
+  //   const getFieldValue = (name) => {
+  //     const field = fields.find(f => f.field_name === name);
+  //     return field?.values?.[0]?.value || null;
+  //   };
+  //   const click_id = getFieldValue("Click ID");
+  //   if (click_id) {
+  //     console.log("Click ID LEAD", click_id)
+  //     await sendMetaConversion(click_id);
+  //   } else {
+  //     console.error("❌ Faltan datos para enviar CAPI:", { click_id });
+  //   }
+  // }
+  // res.sendStatus(200);
 });
 
 // ✅ Envío a Meta CAPI
 async function sendMetaConversion(click_id) {
-  const url = `https://graph.facebook.com/v19.0/${PIXEL_ID}/events?access_token=${ACCESS_TOKEN}`;
+  const url = `https://graph.facebook.com/v23.0/${PIXEL_ID}/events?access_token=${ACCESS_TOKEN}`;
   const eventTime = Math.floor(Date.now() / 1000);
   const page_id = "361404980388508"
   const payload = {
