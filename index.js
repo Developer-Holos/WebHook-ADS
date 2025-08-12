@@ -207,7 +207,8 @@ async function fetchLeadDetails(leadId) {
     const response = await axios.get(url, {
       headers: { Authorization: `Bearer ${KOMMO_SECRET_TOKEN}` }
     });
-    return response.data.leads[0];
+    console.log("RESPONSE LEADS completa:", JSON.stringify(response.data, null, 2));
+    return response.data._embedded?.leads?.[0] || response.data.lead || null;
   } catch (error) {
     console.error('Error fetching lead details:', error.response?.data || error.message);
     return null;
