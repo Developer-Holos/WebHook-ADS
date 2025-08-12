@@ -217,15 +217,18 @@ async function fetchLeadDetails(leadId) {
 
 function getClickIdFromFields(fields = []) {
   if (!fields || !Array.isArray(fields)) return null;
-  const field = fields.find(f => f.field_id === 542218);
+  const field = fields.find(f => f.field_name === "Click ID");
   return field?.values?.[0]?.value || null;
 }
 
 app.post("/kommo/webhook", async (req, res) => {
-  const CLICK_ID_FIELD_ID = 542218;
-  console.log("RECIBIENDO WEBHOOK")
+  console.log("RECIBIENDO WEBHOOK");
   const leadUpdate = req.body?.leads?.status?.[0];
-  if (!leadUpdate) return res.sendStatus(200);
+  if (!leadUpdate) {
+    console.log("No hay leadUpdate en el body");
+    return res.sendStatus(200);
+  }
+  console.log("Status ID recibido:", leadUpdate.status_id);
   if (leadUpdate.status_id === "89830699") {
     const leadDetails = await fetchLeadDetails(leadUpdate.id);
     if (!leadDetails) {
@@ -235,7 +238,11 @@ app.post("/kommo/webhook", async (req, res) => {
     const click_id = getClickIdFromFields(leadDetails.custom_fields_values);
     if (click_id) {
       console.log("✅ Click ID encontrado:", click_id);
-      await sendMetaConversion(click_id);
+      try {
+        await sendMetaConversion(click_id);
+      } catch (e) {
+        console.error("Error enviando conversión a Meta CAPI:", e);
+      }
     } else {
       console.error("❌ No se encontró Click ID en detalles del lead");
     }
