@@ -221,6 +221,7 @@ app.post("/conversion", async (req, res) => {
 
 
 // LEAD GANADO
+app.use(express.json());
 app.post("/kommo/webhook", async (req, res) => {
   console.log("RECIBIENDO WEBHOOK")
   console.log(req.body)
