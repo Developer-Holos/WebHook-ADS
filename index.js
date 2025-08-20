@@ -86,17 +86,19 @@ app.post("/facebook/webhook", async (req, res) => {
           const maxIdRes = await pool.query('SELECT MAX(id) as max_id FROM leads');
           const maxId = maxIdRes.rows[0].max_id || 0;
           await pool.query(`SELECT setval('leads_id_seq', $1)`, [maxId]);
-          const { lead_id, status } = await sendToKommo(name, from, click_id, ad_info, text);
+          const { lead_id, status_name } = await sendToKommo(name, from, click_id, ad_info, text);
+          
           const values = [
             name, from, click_id, ad_info.ad_id, ad_info.ad_name,
             ad_info.adset_id, ad_info.adset_name, ad_info.campaign_id, ad_info.campaign_name,
             text, metrics.impressions || 0, metrics.reach || 0, metrics.spend || 0,
-            metrics.clicks || 0, metrics.ctr || 0, 0, lead_id, status
+            metrics.clicks || 0, metrics.ctr || 0, 0, lead_id, status_name
           ];
+
           const query = `
             INSERT INTO leads (
               name, phone, click_id, ad_id, ad_name, adset_id, adset_name, campaign_id, campaign_name,
-              message, impressions, reach, spend, clicks, ctr, created_at, lead_value, lead_id, status_id
+              message, impressions, reach, spend, clicks, ctr, created_at, lead_value, lead_id, status
             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW(),$16,$17,$18)
             RETURNING id;
           `;
@@ -169,7 +171,10 @@ async function sendToKommo(name, phone, click_id, ad_info, message) {
           }
         });
         console.log("✅ Lead actualizado correctamente:", activeLead.id);
-        return { lead_id: activeLead.id, status_id: activeLead.status_id };
+        const lead_id = activeLead.id;
+        const status_name = await fetchStageName(activeLead.pipeline_id, activeLead.status_id);
+        print("NOMBRE DE LA ETAPA",status_name)
+        return { lead_id: lead_id, status_name: status_name };
       } else {
         console.log("📄 Mandar a Excel: contacto sin lead activo");
         return { lead_id: null, status_id: null };
