@@ -83,6 +83,10 @@ app.post("/facebook/webhook", async (req, res) => {
           const metricsUrl = `https://graph.facebook.com/v23.0/${ad_id}/insights?fields=impressions,reach,spend,clicks,ctr&access_token=${ACCESS_TOKEN}`;
           const metricsRes = await axios.get(metricsUrl);
           const metrics = metricsRes.data?.data?.[0] || {};
+          const maxIdRes = await pool.query('SELECT MAX(id) as max_id FROM leads');
+          const maxId = maxIdRes.rows[0].max_id || 0;
+          await pool.query(`SELECT setval('leads_id_seq', $1)`, [maxId]);
+          
           const values = [
             name,          // $1
             from,          // $2
