@@ -2,7 +2,7 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const axios = require("axios");
 const crypto = require("crypto");
-
+const pool = require("./db");
 
 const app = express();
 const PORT = 3000;
@@ -171,11 +171,26 @@ async function fetchLeadDetails(leadId) {
     const response = await axios.get(url, {
       headers: { Authorization: `Bearer ${KOMMO_SECRET_TOKEN}` }
     });
-    console.log("RESPONSE LEADS completa:", JSON.stringify(response.data, null, 2));
+    // console.log("RESPONSE LEADS completa:", JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error) {
-    console.error('Error fetching lead details:', error.response?.data || error.message);
+    // console.error('Error fetching lead details:', error.response?.data || error.message);
     return null;
+  }
+}
+
+async function fetchStageName(pipelineId, statusId) {
+  const url = `https://killamuse04.kommo.com/api/v4/leads/pipelines/${pipelineId}`;
+  try {
+    const response = await axios.get(url, {
+      headers: { Authorization: `Bearer ${KOMMO_SECRET_TOKEN}` },
+    });
+    const stages = response.data?._embedded?.statuses || [];
+    const stage = stages.find(s => s.id === statusId);
+    return stage ? stage.name : "Etapa desconocida";
+  } catch (error) {
+    console.error("Error fetching stage name:", error.response?.data || error.message);
+    return "Etapa desconocida";
   }
 }
 
@@ -210,7 +225,7 @@ app.post("/kommo/webhook", async (req, res) => {
     }
   }
   // 🔹 Obtenemos el nombre real de la etapa desde los detalles del lead
-  const newStatus = leadDetails?._embedded?.status?.name || "Sin nombre";
+  const newStatus = await fetchStageName(leadDetails.pipeline_id, leadDetails.status_id);
   console.log(`📌 Nueva etapa: ${newStatus}`);
   const now = new Date();
   const updateQuery = `
