@@ -79,6 +79,19 @@ app.post("/facebook/webhook", async (req, res) => {
             campaign_id: adData.adset?.campaign?.id,
             campaign_name: adData.adset?.campaign?.name,
           };
+          // 2️⃣ Obtener métricas del ad
+          const metricsUrl = `https://graph.facebook.com/v23.0/${ad_id}/insights?fields=impressions,reach,spend,clicks,ctr&access_token=${ACCESS_TOKEN}`;
+          const metricsRes = await axios.get(metricsUrl);
+          const metrics = metricsRes.data?.data?.[0] || {};
+          const query = `
+            INSERT INTO leads (
+              name, phone, click_id, ad_id, ad_name, adset_id, adset_name, campaign_id, campaign_name,
+              message, impressions, reach, spend, clicks, ctr, created_at, lead_value
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW())
+            RETURNING id;
+          `;
+          const result = await pool.query(query, values);
+          console.log("✅ Lead insertado en DB con ID:", result.rows[0].id);
           // Guardar lead en memoria
           leads[from] = {
             phone: from,
