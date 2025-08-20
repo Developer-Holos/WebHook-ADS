@@ -150,6 +150,10 @@ async function sendToKommo(name, phone, click_id, ad_info, message) {
         if (activeLead) break;
       }
       if (activeLead) {
+        console.log("ACTIVE LEAD",activeLead)
+        const lead_id = activeLead.id;
+        const status_name = await fetchStageName(activeLead.pipeline_id, activeLead.status_id);
+        console.log("NOMBRE DE LA ETAPA",status_name)
         const payload = {
           id: activeLead.id,
           pipeline_id: PIPELINE_ID,
@@ -171,9 +175,7 @@ async function sendToKommo(name, phone, click_id, ad_info, message) {
           }
         });
         console.log("✅ Lead actualizado correctamente:", activeLead.id);
-        const lead_id = activeLead.id;
-        const status_name = await fetchStageName(activeLead.pipeline_id, activeLead.status_id);
-        print("NOMBRE DE LA ETAPA",status_name)
+      
         return { lead_id: lead_id, status_name: status_name };
       } else {
         console.log("📄 Mandar a Excel: contacto sin lead activo");
