@@ -86,30 +86,18 @@ app.post("/facebook/webhook", async (req, res) => {
           const maxIdRes = await pool.query('SELECT MAX(id) as max_id FROM leads');
           const maxId = maxIdRes.rows[0].max_id || 0;
           await pool.query(`SELECT setval('leads_id_seq', $1)`, [maxId]);
-          
+          const { lead_id, status } = await sendToKommo(name, from, click_id, ad_info, text);
           const values = [
-            name,          // $1
-            from,          // $2
-            click_id,      // $3
-            ad_info.ad_id,       // $4
-            ad_info.ad_name,     // $5
-            ad_info.adset_id,    // $6
-            ad_info.adset_name,  // $7
-            ad_info.campaign_id, // $8
-            ad_info.campaign_name,// $9
-            text,            // $10
-            metrics.impressions || 0, // $11
-            metrics.reach || 0,       // $12
-            metrics.spend || 0,       // $13
-            metrics.clicks || 0,      // $14
-            metrics.ctr || 0,         // $15
-            0                 // $16 -> lead_value inicial, tipo numeric
+            name, from, click_id, ad_info.ad_id, ad_info.ad_name,
+            ad_info.adset_id, ad_info.adset_name, ad_info.campaign_id, ad_info.campaign_name,
+            text, metrics.impressions || 0, metrics.reach || 0, metrics.spend || 0,
+            metrics.clicks || 0, metrics.ctr || 0, 0, lead_id, status
           ];
           const query = `
             INSERT INTO leads (
               name, phone, click_id, ad_id, ad_name, adset_id, adset_name, campaign_id, campaign_name,
-              message, impressions, reach, spend, clicks, ctr, created_at, lead_value
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW(),$16)
+              message, impressions, reach, spend, clicks, ctr, created_at, lead_value, lead_id, status_id
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW(),$16,$17,$18)
             RETURNING id;
           `;
           const result = await pool.query(query, values);
@@ -123,7 +111,7 @@ app.post("/facebook/webhook", async (req, res) => {
           };
           // Enviar a Kommo
 
-          await sendToKommo(name, from, click_id, ad_info, text);
+          // await sendToKommo(name, from, click_id, ad_info, text);
           console.log("✅ Lead enviado a Kommo:", from);
           
         } catch (err) {
@@ -181,8 +169,10 @@ async function sendToKommo(name, phone, click_id, ad_info, message) {
           }
         });
         console.log("✅ Lead actualizado correctamente:", activeLead.id);
+        return { lead_id: activeLead.id, status_id: activeLead.status_id };
       } else {
         console.log("📄 Mandar a Excel: contacto sin lead activo");
+        return { lead_id: null, status_id: null };
       }
     }else{
       console.log("Mandar a excel")
@@ -190,8 +180,6 @@ async function sendToKommo(name, phone, click_id, ad_info, message) {
   } catch (err) {
     console.error("❌ Error en sendToKommo:", err.response?.data || err.message);
   }
-
-
 }
 
 
