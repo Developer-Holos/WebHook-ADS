@@ -83,6 +83,24 @@ app.post("/facebook/webhook", async (req, res) => {
           const metricsUrl = `https://graph.facebook.com/v23.0/${ad_id}/insights?fields=impressions,reach,spend,clicks,ctr&access_token=${ACCESS_TOKEN}`;
           const metricsRes = await axios.get(metricsUrl);
           const metrics = metricsRes.data?.data?.[0] || {};
+          const values = [
+            name,          // $1
+            from,          // $2
+            click_id,      // $3
+            ad_info.ad_id,       // $4
+            ad_info.ad_name,     // $5
+            ad_info.adset_id,    // $6
+            ad_info.adset_name,  // $7
+            ad_info.campaign_id, // $8
+            ad_info.campaign_name,// $9
+            text,            // $10
+            metrics.impressions || 0, // $11
+            metrics.reach || 0,       // $12
+            metrics.spend || 0,       // $13
+            metrics.clicks || 0,      // $14
+            metrics.ctr || 0,         // $15
+            0 // $16
+          ];
           const query = `
             INSERT INTO leads (
               name, phone, click_id, ad_id, ad_name, adset_id, adset_name, campaign_id, campaign_name,
