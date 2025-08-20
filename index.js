@@ -111,21 +111,6 @@ app.post("/facebook/webhook", async (req, res) => {
 
 // ✅ Crear lead en Kommo
 async function sendToKommo(name, phone, click_id, ad_info, message) {
-  // PAYLOAD KOMMO HOLOS
-  // const payload = {
-  //   name: `${name} (WhatsApp)`,               
-  //   pipeline_id: PIPELINE_ID,  
-  //   custom_fields_values: [
-  //     { field_id: 797807, values: [{ value: click_id }] },                          // Click ID
-  //     { field_id: 797809, values: [{ value: ad_info.campaign_name }] },             // Campaña
-  //     { field_id: 797811, values: [{ value: ad_info.campaign_id }] },               // ID Campaña
-  //     { field_id: 797813, values: [{ value: ad_info.adset_name }] },                // Conjunto Anuncios
-  //     { field_id: 797815, values: [{ value: ad_info.adset_id }] },                  // ID Conjunto Anuncios
-  //     { field_id: 797817, values: [{ value: ad_info.ad_name }] },                   // Nombre Anuncio
-  //     { field_id: 797819, values: [{ value: ad_info.ad_id }] },                     // ID Anuncio
-  //     { field_id: 797821, values: [{ value: message }] }                            // Mensaje
-  //   ]
-  // };
   try {
     const contactsRes = await axios.get(`https://killamuse04.kommo.com/api/v4/contacts?query=${phone}`,{ headers: { Authorization: `Bearer ${KOMMO_SECRET_TOKEN}` } });
     const contacts = contactsRes.data?._embedded?.contacts || [];
@@ -171,27 +156,6 @@ async function sendToKommo(name, phone, click_id, ad_info, message) {
     console.error("❌ Error en sendToKommo:", err.response?.data || err.message);
   }
 
-  // PAYLOAD KILLAMUSE
-  //   const payload = {
-  //   name: `${name} (WhatsApp)`,               
-  //   pipeline_id: PIPELINE_ID,  
-  //   custom_fields_values: [
-  //     { field_id: 542218, values: [{ value: click_id }] },                          // Click ID
-  //     { field_id: 542220, values: [{ value: ad_info.campaign_name }] },             // Campaña
-  //     { field_id: 542222, values: [{ value: ad_info.campaign_id }] },               // ID Campaña
-  //     { field_id: 542224, values: [{ value: ad_info.adset_name }] },                // Conjunto Anuncios
-  //     { field_id: 542226, values: [{ value: ad_info.adset_id }] },                  // ID Conjunto Anuncios
-  //     { field_id: 542276, values: [{ value: ad_info.ad_name }] },                   // Nombre Anuncio
-  //     { field_id: 542278, values: [{ value: ad_info.ad_id }] },                     // ID Anuncio
-  //     { field_id: 542280, values: [{ value: message }] }                            // Mensaje
-  //   ],
-  // };
-  // await axios.post(KOMMO_WEBHOOK_URL, [payload], {
-  //   headers: {
-  //     "Authorization": `Bearer ${KOMMO_SECRET_TOKEN}`,
-  //     "Content-Type": "application/json"
-  //   }
-  // });
 
 }
 
@@ -222,17 +186,14 @@ function getClickIdFromFields(fields = []) {
 }
 
 app.post("/kommo/webhook", async (req, res) => {
-  console.log("RECIBIENDO WEBHOOK");
   const leadUpdate = req.body?.leads?.status?.[0];
   if (!leadUpdate) {
-    console.log("No hay leadUpdate en el body");
     return res.sendStatus(200);
   }
   console.log("Status ID recibido:", leadUpdate.status_id);
   if (leadUpdate.status_id === "89830699") {
     const leadDetails = await fetchLeadDetails(leadUpdate.id);
     if (!leadDetails) {
-      console.error('No se pudo obtener detalles del lead');
       return res.sendStatus(500);
     }
     const click_id = getClickIdFromFields(leadDetails.custom_fields_values);
@@ -246,6 +207,23 @@ app.post("/kommo/webhook", async (req, res) => {
     } else {
       console.error("❌ No se encontró Click ID en detalles del lead");
     }
+  }
+  // 🔹 Obtenemos el nombre real de la etapa desde los detalles del lead
+  const newStatus = leadDetails?._embedded?.status?.name || "Sin nombre";
+  console.log(`📌 Nueva etapa: ${newStatus}`);
+  const now = new Date();
+  const updateQuery = `
+      UPDATE leads
+      SET status = $1,
+          updated_at = $2
+      WHERE lead_id = $3
+      RETURNING *;
+    `;
+  const result = await pool.query(updateQuery, [newStatus, now, leadUpdate.id])
+  if (result.rowCount > 0) {
+    console.log(`✅ Lead ${leadUpdate.id} actualizado en BD. Nueva etapa: ${newStatus}`);
+  } else {
+    console.warn(`⚠️ No se encontró el lead ${leadUpdate.id} en la BD.`);
   }
   res.sendStatus(200);
 });
