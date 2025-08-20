@@ -150,13 +150,13 @@ async function sendToKommo(name, phone, click_id, ad_info, message) {
         if (activeLead) break;
       }
       if (activeLead) {
-        console.log("ACTIVE LEAD",activeLead)
+        leadDetails = await fetchLeadDetails(activeLead.id);
         const lead_id = activeLead.id;
-        const status_name = await fetchStageName(activeLead.pipeline_id, activeLead.status_id);
+        const status_name = await fetchStageName(leadDetails.pipeline_id, leadDetails.status_id);
         console.log("NOMBRE DE LA ETAPA",status_name)
         const payload = {
           id: activeLead.id,
-          pipeline_id: PIPELINE_ID,
+          pipeline_id: leadDetails.pipeline_id,
           custom_fields_values: [
             { field_id: 542218, values: [{ value: click_id }] }, // Click ID
             { field_id: 542220, values: [{ value: ad_info.campaign_name }] },
