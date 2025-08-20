@@ -190,9 +190,10 @@ app.post("/kommo/webhook", async (req, res) => {
   if (!leadUpdate) {
     return res.sendStatus(200);
   }
+  let leadDetails = null;
+  leadDetails = await fetchLeadDetails(leadUpdate.id);
   console.log("Status ID recibido:", leadUpdate.status_id);
   if (leadUpdate.status_id === "89830699") {
-    const leadDetails = await fetchLeadDetails(leadUpdate.id);
     if (!leadDetails) {
       return res.sendStatus(500);
     }
