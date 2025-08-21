@@ -230,8 +230,6 @@ async function sendToKommo(name, phone, click_id, ad_info, message) {
 }
 
 
-
-
 // LEAD GANADO
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -241,10 +239,8 @@ async function fetchLeadDetails(leadId) {
     const response = await axios.get(url, {
       headers: { Authorization: `Bearer ${KOMMO_SECRET_TOKEN}` }
     });
-    // console.log("RESPONSE LEADS completa:", JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error) {
-    // console.error('Error fetching lead details:', error.response?.data || error.message);
     return null;
   }
 }
