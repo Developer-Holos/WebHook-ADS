@@ -98,10 +98,14 @@ app.post("/facebook/webhook", async (req, res) => {
           };
 
           // 3️⃣ Ajustar la secuencia de IDs de leads
-          const maxIdRes = await pool.query("SELECT MAX(id) as max_id FROM leads");
+          const maxIdRes = await pool.query("SELECT MAX(id) AS max_id FROM leads");
           const maxId = maxIdRes.rows[0].max_id || 0;
-          await pool.query(`SELECT setval('leads_id_seq', $1)`, [maxId]);
 
+          // Si la tabla está vacía, arrancamos desde 1, sino desde maxId + 1
+          const nextVal = maxId === 0 ? 1 : maxId + 1;
+
+          await pool.query(`SELECT setval('leads_id_seq', $1, false)`, [nextVal]);
+          
           // 4️⃣ Enviar lead a Kommo
           const { lead_id, status } = await sendToKommo(name, from, click_id, ad_info, text);
 
