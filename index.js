@@ -115,7 +115,6 @@ app.post("/facebook/webhook", async (req, res) => {
           // Enviar a Kommo
 
           // await sendToKommo(name, from, click_id, ad_info, text);
-          console.log("✅ Lead enviado a Kommo:", from);
           const totalsRes = await pool.query(`
               SELECT 
                 SUM(max_impressions) AS total_impressions,
@@ -130,12 +129,15 @@ app.post("/facebook/webhook", async (req, res) => {
                   MAX(reach) AS max_reach,
                   MAX(spend) AS max_spend,
                   MAX(clicks) AS max_clicks,
-                  MAX(ctr) AS max_ctr
+                  COALESCE(MAX(ctr), 0) AS max_ctr
                 FROM leads
+                WHERE campaign_id = $1
                 GROUP BY ad_id
               ) AS ad_max
-            `);
+            `, [ad_info.campaign_id]);
+
             const totals = totalsRes.rows[0];
+
             await pool.query(`
               UPDATE leads
               SET total_impressions = $1,
@@ -143,12 +145,14 @@ app.post("/facebook/webhook", async (req, res) => {
                   total_spend = $3,
                   total_clicks = $4,
                   total_ctr = $5
+              WHERE campaign_id = $6
             `, [
               totals.total_impressions || 0,
               totals.total_reach || 0,
               totals.total_spend || 0,
               totals.total_clicks || 0,
-              totals.total_ctr || 0
+              totals.total_ctr || 0,
+              ad_info.campaign_id
             ]);
             console.log("✅ Totales generales actualizados:", totals);
 
