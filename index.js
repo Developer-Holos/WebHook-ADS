@@ -274,11 +274,7 @@ app.post("/kommo/webhook", async (req, res) => {
   let leadDetails = null;
   leadDetails = await fetchLeadDetails(leadUpdate.id);
   console.log("Status ID recibido:", leadUpdate.status_id);
-  console.log("LEADETAILS", leadDetails)
-  const presupuestoField = leadDetails.custom_fields_values.find(
-    f => f.field_name === "Presupuesto"
-  );
-  const leadValue = presupuestoField?.values?.[0]?.value || 0;
+  const leadValue = leadDetails.price || 0;
   if (leadUpdate.status_id === "89830699") {
     if (!leadDetails) {
       return res.sendStatus(500);
