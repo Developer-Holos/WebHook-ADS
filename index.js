@@ -54,23 +54,29 @@ app.get("/facebook/webhook", (req, res) => {
 // ✅ Webhook de mensajes entrantes desde WhatsApp
 app.post("/facebook/webhook", async (req, res) => {
   const body = req.body;
-  // 🪵 Imprime todo el body recibido del webhook (para debug completo)
+
   if (body.object !== "whatsapp_business_account") return res.sendStatus(400);
+
   for (const entry of body.entry) {
     for (const change of entry.changes) {
       const message = change.value?.messages?.[0];
       const from = message?.from;
       const text = message?.text?.body || "";
       const name = change.value?.contacts?.[0]?.profile?.name || "Lead de WhatsApp";
+
       if (!from || !message) continue;
+
+      // ✅ Solo procesamos leads con referral (clic en anuncio)
       if (message.referral?.ctwa_clid) {
         const click_id = message.referral.ctwa_clid;
         const ad_id = message.referral.source_id;
+
         try {
-          // Obtener info del anuncio desde Meta Graph API
+          // 1️⃣ Obtener info del anuncio desde Meta
           const url = `https://graph.facebook.com/v19.0/${ad_id}?fields=id,name,adset{id,name,campaign{id,name}}&access_token=${ACCESS_TOKEN}`;
           const fbRes = await axios.get(url);
           const adData = fbRes.data;
+
           const ad_info = {
             ad_id: adData.id,
             ad_name: adData.name,
@@ -79,101 +85,90 @@ app.post("/facebook/webhook", async (req, res) => {
             campaign_id: adData.adset?.campaign?.id,
             campaign_name: adData.adset?.campaign?.name,
           };
-          // 2️⃣ Obtener métricas del ad
-          const metricsUrl = `https://graph.facebook.com/v23.0/${ad_id}/insights?fields=impressions,reach,spend,clicks,ctr&access_token=${ACCESS_TOKEN}`;
+
+          // 2️⃣ Obtener métricas del anuncio (usamos `date_preset=today`)
+          const metricsUrl = `https://graph.facebook.com/v23.0/${ad_id}/insights?fields=impressions,reach,spend,clicks,ctr&date_preset=today&access_token=${ACCESS_TOKEN}`;
           const metricsRes = await axios.get(metricsUrl);
-          const metrics = metricsRes.data?.data?.[0] || {};
-          const maxIdRes = await pool.query('SELECT MAX(id) as max_id FROM leads');
+          const metrics = metricsRes.data?.data?.[0] || {
+            impressions: 0,
+            reach: 0,
+            spend: 0,
+            clicks: 0,
+            ctr: 0,
+          };
+
+          // 3️⃣ Ajustar la secuencia de IDs de leads
+          const maxIdRes = await pool.query("SELECT MAX(id) as max_id FROM leads");
           const maxId = maxIdRes.rows[0].max_id || 0;
           await pool.query(`SELECT setval('leads_id_seq', $1)`, [maxId]);
-          
+
+          // 4️⃣ Enviar lead a Kommo
           const { lead_id, status } = await sendToKommo(name, from, click_id, ad_info, text);
-          
-          const values = [
-            name, from, click_id, ad_info.ad_id, ad_info.ad_name,
-            ad_info.adset_id, ad_info.adset_name, ad_info.campaign_id, ad_info.campaign_name,
-            text, metrics.impressions || 0, metrics.reach || 0, metrics.spend || 0,
-            metrics.clicks || 0, metrics.ctr || 0, 0, lead_id, status
-          ];
-          
-          const query = `
+
+          // 5️⃣ Guardar el lead en la tabla leads
+          const queryLead = `
             INSERT INTO leads (
               name, phone, click_id, ad_id, ad_name, adset_id, adset_name, campaign_id, campaign_name,
-              message, impressions, reach, spend, clicks, ctr, created_at, lead_value, lead_id, status
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW(),$16,$17,$18)
+              message, created_at, lead_id, status
+            )
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW(),$11,$12)
             RETURNING id;
           `;
-          const result = await pool.query(query, values);
-          console.log("✅ Lead insertado en DB con ID:", result.rows[0].id);
-          // Guardar lead en memoria
-          leads[from] = {
-            phone: from,
+          const valuesLead = [
+            name,
+            from,
             click_id,
-            ad_info,
-            message: text,
-          };
-          // Enviar a Kommo
+            ad_info.ad_id,
+            ad_info.ad_name,
+            ad_info.adset_id,
+            ad_info.adset_name,
+            ad_info.campaign_id,
+            ad_info.campaign_name,
+            text,
+            lead_id,
+            status,
+          ];
+          const result = await pool.query(queryLead, valuesLead);
+          console.log("✅ Lead insertado con ID:", result.rows[0].id);
 
-          // await sendToKommo(name, from, click_id, ad_info, text);
-          const totalsRes = await pool.query(`
-              SELECT 
-                SUM(max_impressions) AS total_impressions,
-                SUM(max_reach) AS total_reach,
-                SUM(max_spend) AS total_spend,
-                SUM(max_clicks) AS total_clicks,
-                SUM(max_ctr) AS total_ctr
-              FROM (
-                SELECT 
-                  ad_id,
-                  MAX(impressions) AS max_impressions,
-                  MAX(reach) AS max_reach,
-                  MAX(spend) AS max_spend,
-                  MAX(clicks) AS max_clicks,
-                  COALESCE(MAX(ctr), 0) AS max_ctr
-                FROM leads
-                WHERE campaign_id = $1
-                GROUP BY ad_id
-              ) AS ad_max
-            `, [ad_info.campaign_id]);
+          // 6️⃣ Guardar o actualizar métricas por anuncio y fecha
+          const today = new Date().toISOString().split("T")[0];
+          const queryMetrics = `
+            INSERT INTO ads_metric (
+              ad_id, adset_id, campaign_id, impressions, reach, clicks, spend, ctr, date, updated_at
+            )
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
+            ON CONFLICT (ad_id, date) DO UPDATE
+            SET impressions = EXCLUDED.impressions,
+                reach = EXCLUDED.reach,
+                clicks = EXCLUDED.clicks,
+                spend = EXCLUDED.spend,
+                ctr = EXCLUDED.ctr,
+                updated_at = NOW();
+          `;
+          const valuesMetrics = [
+            ad_info.ad_id,
+            ad_info.adset_id,
+            ad_info.campaign_id,
+            metrics.impressions,
+            metrics.reach,
+            metrics.clicks,
+            metrics.spend,
+            metrics.ctr,
+            today,
+          ];
 
-            const totals = totalsRes.rows[0] || {
-              total_impressions: 0,
-              total_reach: 0,
-              total_spend: 0,
-              total_clicks: 0,
-              total_ctr: 0
-            };
+          await pool.query(queryMetrics, valuesMetrics);
 
-            await pool.query(`
-              UPDATE leads
-              SET total_impressions = $1,
-                  total_reach = $2,
-                  total_spend = $3,
-                  total_clicks = $4,
-                  total_ctr = $5
-              WHERE campaign_id = $6
-            `, [
-              totals.total_impressions,
-              totals.total_reach,
-              totals.total_spend,
-              totals.total_clicks,
-              totals.total_ctr,
-              ad_info.campaign_id
-            ]);
-
-            console.log(`✅ Totales de la campaña ${ad_info.campaign_id} actualizados:`, totals);
+          console.log(`📊 Métricas actualizadas para anuncio ${ad_info.ad_id} en fecha ${today}`);
 
         } catch (err) {
-          if (err.response?.data) {
-            console.dir(err.response.data, { depth: null });
-          } else {
-            console.error(err);
-          }
-          console.error("❌ Error al obtener info de anuncio o enviar a Kommo:", err.response?.data || err.message);
+          console.error("❌ Error en el webhook:", err.response?.data || err.message);
         }
       } else {
         console.log("📨 Mensaje recibido sin referral. No se guardó tracking.");
       }
+
       console.log(`🟢 Mensaje de ${from}: ${text}`);
     }
   }
