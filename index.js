@@ -136,7 +136,13 @@ app.post("/facebook/webhook", async (req, res) => {
               ) AS ad_max
             `, [ad_info.campaign_id]);
 
-            const totals = totalsRes.rows[0];
+            const totals = totalsRes.rows[0] || {
+              total_impressions: 0,
+              total_reach: 0,
+              total_spend: 0,
+              total_clicks: 0,
+              total_ctr: 0
+            };
 
             await pool.query(`
               UPDATE leads
@@ -147,14 +153,15 @@ app.post("/facebook/webhook", async (req, res) => {
                   total_ctr = $5
               WHERE campaign_id = $6
             `, [
-              totals.total_impressions || 0,
-              totals.total_reach || 0,
-              totals.total_spend || 0,
-              totals.total_clicks || 0,
-              totals.total_ctr || 0,
+              totals.total_impressions,
+              totals.total_reach,
+              totals.total_spend,
+              totals.total_clicks,
+              totals.total_ctr,
               ad_info.campaign_id
             ]);
-            console.log("✅ Totales generales actualizados:", totals);
+
+            console.log(`✅ Totales de la campaña ${ad_info.campaign_id} actualizados:`, totals);
 
         } catch (err) {
           if (err.response?.data) {
