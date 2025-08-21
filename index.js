@@ -54,20 +54,23 @@ app.get("/facebook/webhook", (req, res) => {
 // ✅ Webhook de mensajes entrantes desde WhatsApp
 app.post("/facebook/webhook", async (req, res) => {
   const body = req.body;
-  // 🪵 Imprime todo el body recibido del webhook (para debug completo)
   if (body.object !== "whatsapp_business_account") return res.sendStatus(400);
+
   for (const entry of body.entry) {
     for (const change of entry.changes) {
       const message = change.value?.messages?.[0];
       const from = message?.from;
       const text = message?.text?.body || "";
       const name = change.value?.contacts?.[0]?.profile?.name || "Lead de WhatsApp";
+
       if (!from || !message) continue;
+
       if (message.referral?.ctwa_clid) {
         const click_id = message.referral.ctwa_clid;
         const ad_id = message.referral.source_id;
+
         try {
-          // Obtener info del anuncio desde Meta Graph API
+          // 🔹 Obtener info del anuncio desde Meta Graph API
           const url = `https://graph.facebook.com/v19.0/${ad_id}?fields=id,name,adset{id,name,campaign{id,name}}&access_token=${ACCESS_TOKEN}`;
           const fbRes = await axios.get(url);
           const adData = fbRes.data;
@@ -79,22 +82,20 @@ app.post("/facebook/webhook", async (req, res) => {
             campaign_id: adData.adset?.campaign?.id,
             campaign_name: adData.adset?.campaign?.name,
           };
-          // 2️⃣ Obtener métricas del ad
+
+          // 🔹 Obtener métricas del ad
           const metricsUrl = `https://graph.facebook.com/v23.0/${ad_id}/insights?fields=impressions,reach,spend,clicks,ctr&access_token=${ACCESS_TOKEN}`;
           const metricsRes = await axios.get(metricsUrl);
           const metrics = metricsRes.data?.data?.[0] || {};
-          const maxIdRes = await pool.query('SELECT MAX(id) as max_id FROM leads');
-          const maxId = maxIdRes.rows[0].max_id || 0;
-          await pool.query(`SELECT setval('leads_id_seq', $1)`, [maxId]);
+
+          // 🔹 Insertar lead en DB
           const { lead_id, status_name } = await sendToKommo(name, from, click_id, ad_info, text);
-          
           const values = [
             name, from, click_id, ad_info.ad_id, ad_info.ad_name,
             ad_info.adset_id, ad_info.adset_name, ad_info.campaign_id, ad_info.campaign_name,
             text, metrics.impressions || 0, metrics.reach || 0, metrics.spend || 0,
             metrics.clicks || 0, metrics.ctr || 0, 0, lead_id, status_name
           ];
-
           const query = `
             INSERT INTO leads (
               name, phone, click_id, ad_id, ad_name, adset_id, adset_name, campaign_id, campaign_name,
@@ -104,33 +105,61 @@ app.post("/facebook/webhook", async (req, res) => {
           `;
           const result = await pool.query(query, values);
           console.log("✅ Lead insertado en DB con ID:", result.rows[0].id);
-          // Guardar lead en memoria
-          leads[from] = {
-            phone: from,
-            click_id,
-            ad_info,
-            message: text,
-          };
-          // Enviar a Kommo
 
-          // await sendToKommo(name, from, click_id, ad_info, text);
-          console.log("✅ Lead enviado a Kommo:", from);
-          
-        } catch (err) {
-          if (err.response?.data) {
-            console.dir(err.response.data, { depth: null });
-          } else {
-            console.error(err);
+          // 🔹 Actualizar totales generales (MAX por anuncio sumados)
+          const adsRes = await pool.query("SELECT DISTINCT ad_id FROM leads");
+          const adIds = adsRes.rows.map(r => r.ad_id);
+
+          let totalImpressions = 0;
+          let totalReach = 0;
+          let totalSpend = 0;
+          let totalClicks = 0;
+          let totalCtr = 0;
+
+          for (const id of adIds) {
+            const metricsRes = await pool.query(
+              `SELECT 
+                MAX(impressions) AS max_impressions,
+                MAX(reach) AS max_reach,
+                MAX(spend) AS max_spend,
+                MAX(clicks) AS max_clicks,
+                MAX(ctr) AS max_ctr
+              FROM leads
+              WHERE ad_id = $1`,
+              [id]
+            );
+            const m = metricsRes.rows[0];
+            totalImpressions += Number(m.max_impressions || 0);
+            totalReach += Number(m.max_reach || 0);
+            totalSpend += Number(m.max_spend || 0);
+            totalClicks += Number(m.max_clicks || 0);
+            totalCtr += Number(m.max_ctr || 0);
           }
-          console.error("❌ Error al obtener info de anuncio o enviar a Kommo:", err.response?.data || err.message);
+          // 🔹 Actualizar el lead recién insertado con totales generales
+          await pool.query(
+            `UPDATE leads
+             SET total_impressions = $1,
+                 total_reach = $2,
+                 total_spend = $3,
+                 total_clicks = $4,
+                 total_ctr = $5
+             WHERE id = $6`,
+            [totalImpressions, totalReach, totalSpend, totalClicks, totalCtr, result.rows[0].id]
+          );
+          console.log(`✅ Totales generales actualizados para lead_id=${result.rows[0].id}`);
+          // Guardar lead en memoria
+          leads[from] = { phone: from, click_id, ad_info, message: text };
+          console.log("✅ Lead enviado a Kommo:", from);
+        } catch (err) {
+          console.error("❌ Error al procesar lead:", err.response?.data || err.message);
         }
+
       } else {
         console.log("📨 Mensaje recibido sin referral. No se guardó tracking.");
       }
       console.log(`🟢 Mensaje de ${from}: ${text}`);
     }
   }
-
   res.sendStatus(200);
 });
 
