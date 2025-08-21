@@ -131,7 +131,7 @@ app.post("/facebook/webhook", async (req, res) => {
           // 6️⃣ Guardar o actualizar métricas por anuncio y fecha
           const today = new Date().toISOString().split("T")[0];
           const queryMetrics = `
-            INSERT INTO ads_metric (
+            INSERT INTO ads_metrics (
               ad_id, ad_name, adset_id, adset_name, campaign_id, campaign_name,
               impressions, reach, clicks, spend, ctr, date, updated_at
             )
