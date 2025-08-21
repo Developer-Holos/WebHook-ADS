@@ -36,6 +36,8 @@ function hashSHA256(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
 
+
+// ---------------------WEBHOOK META WSTP ADS -------------------------------
 // ✅ Verificación del Webhook
 app.get("/facebook/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
@@ -181,27 +183,58 @@ app.post("/facebook/webhook", async (req, res) => {
   res.sendStatus(200);
 });
 
+async function getStatusId() {
+  try {
+    const res = await axios.get(`https://killamuse04.kommo.com/api/v4/pipelines`, {
+      headers: { Authorization: `Bearer ${KOMMO_SECRET_TOKEN}` }
+    });
+    const pipelines = res.data._embedded.pipelines || [];
+    const pipeline = pipelines.find(p => p.id === PIPELINE_ID); // tu pipeline fijo
+    if (!pipeline) throw new Error("Pipeline no encontrado");
+    const status = pipeline.statuses.find(s => s.name === "Nueva Consulta");
+    if (!status) throw new Error("Etapa 'Nueva Consulta' no encontrada");
+    return status.id;
+  } catch (err) {
+    console.error("❌ Error al obtener status_id de 'Nueva Consulta':", err.message);
+    return null;
+  }
+}
+
 // ✅ Crear lead en Kommo
 async function sendToKommo(name, phone, click_id, ad_info, message) {
   try {
-    const contactsRes = await axios.get(`https://killamuse04.kommo.com/api/v4/contacts?query=${phone}`,{ headers: { Authorization: `Bearer ${KOMMO_SECRET_TOKEN}` } });
+    const headers = { Authorization: `Bearer ${KOMMO_SECRET_TOKEN}`, "Content-Type": "application/json" };
+    // Buscar contacto por teléfono
+    const contactsRes = await axios.get(
+      `https://killamuse04.kommo.com/api/v4/contacts?query=${phone}`,
+      { headers }
+    );
     const contacts = contactsRes.data?._embedded?.contacts || [];
-    let activeLead = null;
-    if (contacts.length!== 0) {
+    let lead_id = null;
+    let status_name = null;
+    if (contacts.length > 0) {
       console.log("✅ Hay información del contacto");
-      const withLeadsRes = await axios.get( `https://killamuse04.kommo.com/api/v4/contacts?with=leads&query=${phone}`,{ headers: { Authorization: `Bearer ${KOMMO_SECRET_TOKEN}` } });
-      const fullContacts = withLeadsRes.data?._embedded?.contacts || [];
+      // Obtener leads del contacto
+      const fullContactsRes = await axios.get(
+        `https://killamuse04.kommo.com/api/v4/contacts?with=leads&query=${phone}`,
+        { headers }
+      );
+      const fullContacts = fullContactsRes.data?._embedded?.contacts || [];
+      let activeLead = null;
+      let contactId = null;
       for (const contact of fullContacts) {
+        contactId = contact.id;
         const leads = contact._embedded?.leads || [];
         activeLead = leads.find((lead) => lead.status_id !== 142 && lead.status_id !== 143);
         if (activeLead) break;
       }
       if (activeLead) {
+        // Actualizar lead activo
         const payload = {
           id: activeLead.id,
           pipeline_id: PIPELINE_ID,
           custom_fields_values: [
-            { field_id: 542218, values: [{ value: click_id }] }, // Click ID
+            { field_id: 542218, values: [{ value: click_id }] },
             { field_id: 542220, values: [{ value: ad_info.campaign_name }] },
             { field_id: 542222, values: [{ value: ad_info.campaign_id }] },
             { field_id: 542224, values: [{ value: ad_info.adset_name }] },
@@ -211,32 +244,54 @@ async function sendToKommo(name, phone, click_id, ad_info, message) {
             { field_id: 542280, values: [{ value: message }] }
           ]
         };
-        await axios.patch(KOMMO_WEBHOOK_URL, [payload], {
-          headers: {
-            Authorization: `Bearer ${KOMMO_SECRET_TOKEN}`,
-            "Content-Type": "application/json"
-          }
-        });
-        console.log("ACTIVE LEAD",activeLead)
-        const lead_id = activeLead.id;
-        const status_name = await fetchStageName(PIPELINE_ID, activeLead.status_id);
-        console.log("✅ Lead actualizado correctamente:", activeLead.id);
-      
-        return { lead_id: lead_id, status_name: status_name };
+        await axios.patch(KOMMO_WEBHOOK_URL, [payload], { headers });
+        lead_id = activeLead.id;
+        status_name = await fetchStageName(PIPELINE_ID, activeLead.status_id);
+        console.log("✅ Lead actualizado correctamente:", lead_id);
+      } else if (contactId) {
+        // Crear lead nuevo en etapa "Nueva Consulta"
+        const createLeadRes = await axios.post(
+          "https://killamuse04.kommo.com/api/v4/leads",
+          {
+            name,
+            pipeline_id: PIPELINE_ID,
+            status_id: await getStatusId(), 
+            _embedded: { contacts: [{ id: contactId }] },
+            custom_fields_values: [
+              { field_id: 542218, values: [{ value: click_id }] },
+              { field_id: 542220, values: [{ value: ad_info.campaign_name }] },
+              { field_id: 542222, values: [{ value: ad_info.campaign_id }] },
+              { field_id: 542224, values: [{ value: ad_info.adset_name }] },
+              { field_id: 542226, values: [{ value: ad_info.adset_id }] },
+              { field_id: 542276, values: [{ value: ad_info.ad_name }] },
+              { field_id: 542278, values: [{ value: ad_info.ad_id }] },
+              { field_id: 542280, values: [{ value: message }] }
+            ]
+          },
+          { headers }
+        );
+        lead_id = createLeadRes.data.id;
+        status_name = "Nueva Consulta";
+        console.log("✅ Lead creado en Kommo:", lead_id);
       } else {
-        console.log("📄 Mandar a Excel: contacto sin lead activo");
-        return { lead_id: null, status_id: null };
+        console.log("📄 Mandar a Excel: contacto sin lead activo y sin ID");
       }
-    }else{
-      console.log("Mandar a excel")
+    } else {
+      console.log("📄 Mandar a Excel: contacto no existe en Kommo");
     }
+    return { lead_id, status_name };
   } catch (err) {
     console.error("❌ Error en sendToKommo:", err.response?.data || err.message);
+    return { lead_id: null, status_name: null };
   }
 }
 
 
 
+
+
+
+// ---------------------------------------------------------------------------- CAPI -----------------
 
 // LEAD GANADO
 app.use(bodyParser.json());
