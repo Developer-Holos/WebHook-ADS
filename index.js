@@ -54,6 +54,7 @@ app.get("/facebook/webhook", (req, res) => {
 // ✅ Webhook de mensajes entrantes desde WhatsApp
 app.post("/facebook/webhook", async (req, res) => {
   const body = req.body;
+
   if (body.object !== "whatsapp_business_account") return res.sendStatus(400);
 
   for (const entry of body.entry) {
@@ -70,7 +71,7 @@ app.post("/facebook/webhook", async (req, res) => {
         const ad_id = message.referral.source_id;
 
         try {
-          // 🔹 Obtener info del anuncio desde Meta Graph API
+          // Obtener info del anuncio desde Meta Graph API
           const url = `https://graph.facebook.com/v19.0/${ad_id}?fields=id,name,adset{id,name,campaign{id,name}}&access_token=${ACCESS_TOKEN}`;
           const fbRes = await axios.get(url);
           const adData = fbRes.data;
@@ -83,19 +84,27 @@ app.post("/facebook/webhook", async (req, res) => {
             campaign_name: adData.adset?.campaign?.name,
           };
 
-          // 🔹 Obtener métricas del ad
+          // Obtener métricas del ad
           const metricsUrl = `https://graph.facebook.com/v23.0/${ad_id}/insights?fields=impressions,reach,spend,clicks,ctr&access_token=${ACCESS_TOKEN}`;
           const metricsRes = await axios.get(metricsUrl);
           const metrics = metricsRes.data?.data?.[0] || {};
 
-          // 🔹 Insertar lead en DB
+          // 🔹 Sincronizar secuencia de ID
+          const maxIdRes = await pool.query('SELECT MAX(id) as max_id FROM leads');
+          const maxId = maxIdRes.rows[0].max_id || 0;
+          await pool.query(`SELECT setval('leads_id_seq', $1)`, [maxId]);
+
+          // Enviar a Kommo y obtener lead_id y estado
           const { lead_id, status_name } = await sendToKommo(name, from, click_id, ad_info, text);
+
+          // Insertar el lead en la BD
           const values = [
             name, from, click_id, ad_info.ad_id, ad_info.ad_name,
             ad_info.adset_id, ad_info.adset_name, ad_info.campaign_id, ad_info.campaign_name,
             text, metrics.impressions || 0, metrics.reach || 0, metrics.spend || 0,
             metrics.clicks || 0, metrics.ctr || 0, 0, lead_id, status_name
           ];
+
           const query = `
             INSERT INTO leads (
               name, phone, click_id, ad_id, ad_name, adset_id, adset_name, campaign_id, campaign_name,
@@ -103,10 +112,14 @@ app.post("/facebook/webhook", async (req, res) => {
             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW(),$16,$17,$18)
             RETURNING id;
           `;
+
           const result = await pool.query(query, values);
           console.log("✅ Lead insertado en DB con ID:", result.rows[0].id);
 
-          // 🔹 Actualizar totales generales (MAX por anuncio sumados)
+          // Guardar lead en memoria
+          leads[from] = { phone: from, click_id, ad_info, message: text };
+
+          // 🔹 Actualizar totales generales para todos los leads
           const adsRes = await pool.query("SELECT DISTINCT ad_id FROM leads");
           const adIds = adsRes.rows.map(r => r.ad_id);
 
@@ -116,17 +129,17 @@ app.post("/facebook/webhook", async (req, res) => {
           let totalClicks = 0;
           let totalCtr = 0;
 
-          for (const id of adIds) {
+          for (const adId of adIds) {
             const metricsRes = await pool.query(
-              `SELECT 
-                MAX(impressions) AS max_impressions,
-                MAX(reach) AS max_reach,
-                MAX(spend) AS max_spend,
-                MAX(clicks) AS max_clicks,
-                MAX(ctr) AS max_ctr
-              FROM leads
-              WHERE ad_id = $1`,
-              [id]
+              `SELECT
+                 MAX(impressions) AS max_impressions,
+                 MAX(reach) AS max_reach,
+                 MAX(spend) AS max_spend,
+                 MAX(clicks) AS max_clicks,
+                 MAX(ctr) AS max_ctr
+               FROM leads
+               WHERE ad_id = $1`,
+              [adId]
             );
             const m = metricsRes.rows[0];
             totalImpressions += Number(m.max_impressions || 0);
@@ -135,28 +148,33 @@ app.post("/facebook/webhook", async (req, res) => {
             totalClicks += Number(m.max_clicks || 0);
             totalCtr += Number(m.max_ctr || 0);
           }
-          // 🔹 Actualizar el lead recién insertado con totales generales
+
           await pool.query(
             `UPDATE leads
              SET total_impressions = $1,
                  total_reach = $2,
                  total_spend = $3,
                  total_clicks = $4,
-                 total_ctr = $5
-             WHERE id = $6`,
-            [totalImpressions, totalReach, totalSpend, totalClicks, totalCtr, result.rows[0].id]
+                 total_ctr = $5`,
+            [totalImpressions, totalReach, totalSpend, totalClicks, totalCtr]
           );
-          console.log(`✅ Totales generales actualizados para lead_id=${result.rows[0].id}`);
-          // Guardar lead en memoria
-          leads[from] = { phone: from, click_id, ad_info, message: text };
+
+          console.log(`✅ Totales generales actualizados:
+            total_impressions=${totalImpressions},
+            total_reach=${totalReach},
+            total_spend=${totalSpend},
+            total_clicks=${totalClicks},
+            total_ctr=${totalCtr}`);
+
           console.log("✅ Lead enviado a Kommo:", from);
+
         } catch (err) {
           console.error("❌ Error al procesar lead:", err.response?.data || err.message);
         }
-
       } else {
         console.log("📨 Mensaje recibido sin referral. No se guardó tracking.");
       }
+
       console.log(`🟢 Mensaje de ${from}: ${text}`);
     }
   }
@@ -181,11 +199,11 @@ async function sendToKommo(name, phone, click_id, ad_info, message) {
       if (activeLead) {
         leadDetails = await fetchLeadDetails(activeLead.id);
         const lead_id = activeLead.id;
-        const status_name = await fetchStageName(leadDetails.pipeline_id, leadDetails.status_id);
+        const status_name = await fetchStageName(activeLead.pipeline_id, activeLead.status_id);
         console.log("NOMBRE DE LA ETAPA",status_name)
         const payload = {
           id: activeLead.id,
-          pipeline_id: leadDetails.pipeline_id,
+          pipeline_id: PIPELINE_ID,
           custom_fields_values: [
             { field_id: 542218, values: [{ value: click_id }] }, // Click ID
             { field_id: 542220, values: [{ value: ad_info.campaign_name }] },
