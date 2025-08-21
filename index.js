@@ -109,9 +109,9 @@ app.post("/facebook/webhook", async (req, res) => {
           // 5️⃣ Guardar el lead en la tabla leads (SOLO columnas necesarias)
           const queryLead = `
             INSERT INTO leads (
-              name, phone, click_id, ad_id, ad_name, message, created_at, lead_id, status
+              name, phone, click_id, ad_id, message, created_at, lead_id, status
             )
-            VALUES ($1,$2,$3,$4,$5,$6,NOW(),$7,$8)
+            VALUES ($1, $2, $3, $4, $5, NOW(), $6, $7)
             RETURNING id;
           `;
           const valuesLead = [
