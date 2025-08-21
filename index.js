@@ -86,7 +86,7 @@ app.post("/facebook/webhook", async (req, res) => {
             campaign_name: adData.adset?.campaign?.name,
           };
 
-          // 2️⃣ Obtener métricas del anuncio (usamos `date_preset=today`)
+          // 2️⃣ Obtener métricas del anuncio (hoy)
           const metricsUrl = `https://graph.facebook.com/v23.0/${ad_id}/insights?fields=impressions,reach,spend,clicks,ctr&date_preset=today&access_token=${ACCESS_TOKEN}`;
           const metricsRes = await axios.get(metricsUrl);
           const metrics = metricsRes.data?.data?.[0] || {
@@ -100,21 +100,18 @@ app.post("/facebook/webhook", async (req, res) => {
           // 3️⃣ Ajustar la secuencia de IDs de leads
           const maxIdRes = await pool.query("SELECT MAX(id) AS max_id FROM leads");
           const maxId = maxIdRes.rows[0].max_id || 0;
-
-          // Si la tabla está vacía, arrancamos desde 1, sino desde maxId + 1
           const nextVal = maxId === 0 ? 1 : maxId + 1;
-
           await pool.query(`SELECT setval('leads_id_seq', $1, false)`, [nextVal]);
 
           // 4️⃣ Enviar lead a Kommo
           const { lead_id, status } = await sendToKommo(name, from, click_id, ad_info, text);
 
-          // 5️⃣ Guardar el lead en la tabla leads
+          // 5️⃣ Guardar el lead en la tabla leads (SOLO columnas necesarias)
           const queryLead = `
             INSERT INTO leads (
               name, phone, click_id, ad_id, ad_name, message, created_at, lead_id, status
             )
-            VALUES ($1,$2,$3,$4,$5,$6,NOW(),$8,$9)
+            VALUES ($1,$2,$3,$4,$5,$6,NOW(),$7,$8)
             RETURNING id;
           `;
           const valuesLead = [
@@ -123,14 +120,11 @@ app.post("/facebook/webhook", async (req, res) => {
             click_id,
             ad_info.ad_id,
             ad_info.ad_name,
-            ad_info.adset_id,
-            ad_info.adset_name,
-            ad_info.campaign_id,
-            ad_info.campaign_name,
             text,
             lead_id,
             status,
           ];
+
           const result = await pool.query(queryLead, valuesLead);
           console.log("✅ Lead insertado con ID:", result.rows[0].id);
 
@@ -138,9 +132,10 @@ app.post("/facebook/webhook", async (req, res) => {
           const today = new Date().toISOString().split("T")[0];
           const queryMetrics = `
             INSERT INTO ads_metric (
-              ad_id, adset_id, campaign_id, impressions, reach, clicks, spend, ctr, date, updated_at
+              ad_id, ad_name, adset_id, adset_name, campaign_id, campaign_name,
+              impressions, reach, clicks, spend, ctr, date, updated_at
             )
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
             ON CONFLICT (ad_id, date) DO UPDATE
             SET impressions = EXCLUDED.impressions,
                 reach = EXCLUDED.reach,
@@ -151,8 +146,11 @@ app.post("/facebook/webhook", async (req, res) => {
           `;
           const valuesMetrics = [
             ad_info.ad_id,
+            ad_info.ad_name,
             ad_info.adset_id,
+            ad_info.adset_name,
             ad_info.campaign_id,
+            ad_info.campaign_name,
             metrics.impressions,
             metrics.reach,
             metrics.clicks,
@@ -162,7 +160,6 @@ app.post("/facebook/webhook", async (req, res) => {
           ];
 
           await pool.query(queryMetrics, valuesMetrics);
-
           console.log(`📊 Métricas actualizadas para anuncio ${ad_info.ad_id} en fecha ${today}`);
 
         } catch (err) {
