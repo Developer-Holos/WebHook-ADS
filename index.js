@@ -274,6 +274,10 @@ app.post("/kommo/webhook", async (req, res) => {
   let leadDetails = null;
   leadDetails = await fetchLeadDetails(leadUpdate.id);
   console.log("Status ID recibido:", leadUpdate.status_id);
+  const presupuestoField = leadDetails.custom_fields_values.find(
+    f => f.field_name === "Presupuesto"
+  );
+  const leadValue = presupuestoField?.values?.[0]?.value || 0;
   if (leadUpdate.status_id === "89830699") {
     if (!leadDetails) {
       return res.sendStatus(500);
@@ -282,7 +286,7 @@ app.post("/kommo/webhook", async (req, res) => {
     if (click_id) {
       console.log("✅ Click ID encontrado:", click_id);
       try {
-        await sendMetaConversion(click_id);
+        await sendMetaConversion(click_id, leadValue);
       } catch (e) {
         console.error("Error enviando conversión a Meta CAPI:", e);
       }
@@ -294,14 +298,15 @@ app.post("/kommo/webhook", async (req, res) => {
   const newStatus = await fetchStageName(leadDetails.pipeline_id, leadDetails.status_id);
   console.log(`📌 Nueva etapa: ${newStatus}`);
   const now = new Date();
-  const updateQuery = `
-      UPDATE leads
-      SET status = $1,
-          updated_at = $2
-      WHERE lead_id = $3
-      RETURNING *;
-    `;
-  const result = await pool.query(updateQuery, [newStatus, now, leadUpdate.id])
+   const updateQuery = `
+    UPDATE leads
+    SET status = $1,
+        lead_value = $2,
+        updated_at = $3
+    WHERE lead_id = $4
+    RETURNING *;
+  `;
+  const result = await pool.query(updateQuery, [newStatus, leadValue, now, leadUpdate.id]);
   if (result.rowCount > 0) {
     console.log(`✅ Lead ${leadUpdate.id} actualizado en BD. Nueva etapa: ${newStatus}`);
   } else {
@@ -311,7 +316,7 @@ app.post("/kommo/webhook", async (req, res) => {
 });
 
 // ✅ Envío a Meta CAPI
-async function sendMetaConversion(click_id) {
+async function sendMetaConversion(click_id, leadValue) {
   const url = `https://graph.facebook.com/v23.0/${PIXEL_ID}/events?access_token=${ACCESS_TOKEN}`;
   const eventTime = Math.floor(Date.now() / 1000);
   const page_id = "361404980388508"
@@ -327,8 +332,8 @@ async function sendMetaConversion(click_id) {
           page_id: page_id      
         },
         custom_data: {
-          currency: "USD",
-          value: 100
+          currency: "PEN",
+          value: leadValue
         }
       }
     ]
