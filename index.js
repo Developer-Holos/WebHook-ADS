@@ -198,9 +198,9 @@ async function sendToKommo(name, phone, click_id, ad_info, message) {
       }
       if (activeLead) {
         leadDetails = await fetchLeadDetails(activeLead.id);
+        
         const lead_id = activeLead.id;
-        const status_name = await fetchStageName(activeLead.pipeline_id, activeLead.status_id);
-        console.log("NOMBRE DE LA ETAPA",status_name)
+        const status_name = await fetchStageName(PIPELINE_ID, activeLead.status_id);
         const payload = {
           id: activeLead.id,
           pipeline_id: PIPELINE_ID,
