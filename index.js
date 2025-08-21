@@ -119,7 +119,6 @@ app.post("/facebook/webhook", async (req, res) => {
             from,
             click_id,
             ad_info.ad_id,
-            ad_info.ad_name,
             text,
             lead_id,
             status,
