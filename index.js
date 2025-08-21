@@ -105,17 +105,16 @@ app.post("/facebook/webhook", async (req, res) => {
           const nextVal = maxId === 0 ? 1 : maxId + 1;
 
           await pool.query(`SELECT setval('leads_id_seq', $1, false)`, [nextVal]);
-          
+
           // 4️⃣ Enviar lead a Kommo
           const { lead_id, status } = await sendToKommo(name, from, click_id, ad_info, text);
 
           // 5️⃣ Guardar el lead en la tabla leads
           const queryLead = `
             INSERT INTO leads (
-              name, phone, click_id, ad_id, ad_name, adset_id, adset_name, campaign_id, campaign_name,
-              message, created_at, lead_id, status
+              name, phone, click_id, ad_id, ad_name, message, created_at, lead_id, status
             )
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW(),$11,$12)
+            VALUES ($1,$2,$3,$4,$5,$6,NOW(),$8,$9)
             RETURNING id;
           `;
           const valuesLead = [
