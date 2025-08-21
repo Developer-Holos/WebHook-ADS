@@ -99,7 +99,7 @@ app.post("/facebook/webhook", async (req, res) => {
           const query = `
             INSERT INTO leads (
               name, phone, click_id, ad_id, ad_name, adset_id, adset_name, campaign_id, campaign_name,
-              message, impressions, reach, spend, clicks, ctr, created_at, lead_value, lead_id, status_id
+              message, impressions, reach, spend, clicks, ctr, created_at, lead_value, lead_id, status
             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW(),$16,$17,$18)
             RETURNING id;
           `;
