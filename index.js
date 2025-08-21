@@ -197,10 +197,6 @@ async function sendToKommo(name, phone, click_id, ad_info, message) {
         if (activeLead) break;
       }
       if (activeLead) {
-        leadDetails = await fetchLeadDetails(activeLead.id);
-        
-        const lead_id = activeLead.id;
-        const status_name = await fetchStageName(PIPELINE_ID, activeLead.status_id);
         const payload = {
           id: activeLead.id,
           pipeline_id: PIPELINE_ID,
@@ -221,6 +217,9 @@ async function sendToKommo(name, phone, click_id, ad_info, message) {
             "Content-Type": "application/json"
           }
         });
+        console.log("ACTIVE LEAD",activeLead)
+        const lead_id = activeLead.id;
+        const status_name = await fetchStageName(PIPELINE_ID, activeLead.status_id);
         console.log("✅ Lead actualizado correctamente:", activeLead.id);
       
         return { lead_id: lead_id, status_name: status_name };
