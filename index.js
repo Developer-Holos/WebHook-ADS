@@ -23,8 +23,8 @@ const TEST_EVENT_CODE = "TEST54792";
 
 // PIPELINE KILLAMUSE
 
-const PIPELINE_ID = 11686264;
-const NEW_STATUS_ID = 89830683;
+// const PIPELINE_ID = 11686264;
+// const NEW_STATUS_ID = 89830683;
 const KOMMO_WEBHOOK_URL = "https://killamuse04.kommo.com/api/v4/leads";
 const KOMMO_SECRET_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImp0aSI6IjVkNGQ2ODVhZWYwOWY0YzBjYjhmYzM3NDQwOTU5YmQ0YTEyMThiN2U4N2I0ZTAzNmVhZjJlODZmMTBmMmRkNTFiMTMxNWQ5ZWUwNWUxNWEyIn0.eyJhdWQiOiJkNzExOWFmMS1lMmEzLTRmNmMtODJmNC1jNWQ1NmU0MWJmZjciLCJqdGkiOiI1ZDRkNjg1YWVmMDlmNGMwY2I4ZmMzNzQ0MDk1OWJkNGExMjE4YjdlODdiNGUwMzZlYWYyZTg2ZjEwZjJkZDUxYjEzMTVkOWVlMDVlMTVhMiIsImlhdCI6MTc1NTAyNDE4NiwibmJmIjoxNzU1MDI0MTg2LCJleHAiOjE3NjU2NzA0MDAsInN1YiI6IjEzNjA1NjM2IiwiZ3JhbnRfdHlwZSI6IiIsImFjY291bnRfaWQiOjM0OTYwMzcyLCJiYXNlX2RvbWFpbiI6ImtvbW1vLmNvbSIsInZlcnNpb24iOjIsInNjb3BlcyI6WyJjcm0iLCJmaWxlcyIsImZpbGVzX2RlbGV0ZSIsIm5vdGlmaWNhdGlvbnMiLCJwdXNoX25vdGlmaWNhdGlvbnMiXSwidXNlcl9mbGFncyI6MCwiaGFzaF91dWlkIjoiOTI4ZTk2NzAtYmNlZi00MjAzLWE2MzctODNlZTcwYmM4MmI1IiwiYXBpX2RvbWFpbiI6ImFwaS1jLmtvbW1vLmNvbSJ9.RSS1ipmoYNzfqQkQaYCg5zvJ6Y4pfvQpYvgYCLOQ4jNRxzCcS2UUsV7XMFO2M6AxVePohoEJvhZWxX_4-QEFmGI1Oz-5jdcVqXw0w_r59Vif_fxaNzM4W946EkLZDMBexHpZJdBHvJ6ru-N6vReuJAI33U_HaRuPagVVjC9p5owZUkEfXLmBFEzq6U69aE-rInOB16YoMmCQGBX09MCoNA52Tl2n6BBnIj1t9SgGdwlR-Fqtr7GQcMKzWyyxtMizlu0H8tHFw3q9elab1Bq6BpJ5p-HqWogzauiomdaKId56vM7YCmnGscpszcgOvjLT-LecMtonV6YudC0auQbO8w";
 
@@ -185,6 +185,19 @@ app.post("/facebook/webhook", async (req, res) => {
   res.sendStatus(200);
 });
 
+async function getPipelineAndStatusIds(pipelineName, statusName) {
+  const headers = { Authorization: `Bearer ${KOMMO_SECRET_TOKEN}` };
+  const res = await axios.get("https://killamuse04.kommo.com/api/v4/leads/pipelines", { headers });
+  const pipelines = res.data._embedded.pipelines;
+
+  const pipeline = pipelines.find(p => p.name === pipelineName);
+  if (!pipeline) throw new Error(`Pipeline '${pipelineName}' no encontrado`);
+
+  const status = pipeline._embedded.statuses.find(s => s.name === statusName);
+  if (!status) throw new Error(`Status '${statusName}' no encontrado en pipeline '${pipelineName}'`);
+
+  return { pipelineId: pipeline.id, statusId: status.id };
+}
 
 // ✅ Crear lead en Kommo
 async function sendToKommo(name, phone, click_id, ad_info, message) {
@@ -235,13 +248,14 @@ async function sendToKommo(name, phone, click_id, ad_info, message) {
         status_name = await fetchStageName(PIPELINE_ID, activeLead.status_id);
     
       } else if (contactId) {
+        const { pipelineId, statusId } = await getPipelineAndStatusIds("Embudo de ventas", "Nueva consulta");
         // Crear lead nuevo en etapa "Nueva Consulta"
         const createLeadRes = await axios.post(
           "https://killamuse04.kommo.com/api/v4/leads",
           {
             name,
-            pipeline_id: PIPELINE_ID,
-            status_id: NEW_STATUS_ID , 
+            pipeline_id: pipelineId,
+            status_id: statusId, 
             _embedded: { contacts: [{ id: contactId }] },
             custom_fields_values: [
               { field_id: 542218, values: [{ value: click_id }] },
@@ -257,7 +271,7 @@ async function sendToKommo(name, phone, click_id, ad_info, message) {
           { headers }
         );
         lead_id = createLeadRes.data.id;
-        status_name = await fetchStageName(PIPELINE_ID, NEW_STATUS_ID);
+        status_name = "Nueva consulta";
         console.log("✅ Lead creado en Kommo:", lead_id);
       } else {
         console.log("📄 Mandar a Excel: contacto sin lead activo y sin ID");
