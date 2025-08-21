@@ -309,6 +309,20 @@ app.post("/kommo/webhook", async (req, res) => {
   } else {
     console.warn(`⚠️ No se encontró el lead ${leadUpdate.id} en la BD.`);
   }
+  
+  // 🔹 Actualizar total_lead_value en ads_metrics
+  const updateMetricsQuery = `
+    UPDATE ads_metrics
+    SET total_lead_value = (
+      SELECT COALESCE(SUM(lead_value),0)
+      FROM leads
+      WHERE ad_id = $1
+    ),
+    updated_at = NOW()
+    WHERE ad_id = $1 AND date = $2
+  `;
+  await pool.query(updateMetricsQuery, [click_id, new Date().toISOString().split("T")[0]]);
+
   res.sendStatus(200);
 });
 
