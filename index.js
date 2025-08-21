@@ -253,7 +253,7 @@ async function sendToKommo(name, phone, click_id, ad_info, message) {
         console.log("PIPEL", pipelineId)
         console.log("statusID", statusId)
         console.log("🚀 Creando lead con estos datos:");
-        console.log({
+        console.log("🚀 Payload a enviar a Kommo:", JSON.stringify({
           name,
           pipeline_id: pipelineId,
           status_id: statusId,
@@ -268,7 +268,7 @@ async function sendToKommo(name, phone, click_id, ad_info, message) {
             { field_id: 542278, values: [{ value: ad_info.ad_id }] },
             { field_id: 542280, values: [{ value: message }] }
           ]
-        });
+        }, null, 2));
         // Crear lead nuevo en etapa "Nueva Consulta"
         const createLeadRes = await axios.post(
           "https://killamuse04.kommo.com/api/v4/leads",
