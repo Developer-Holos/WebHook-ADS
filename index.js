@@ -66,7 +66,6 @@ app.post("/facebook/webhook", async (req, res) => {
 
       if (!from || !message) continue;
 
-      // ✅ Solo procesamos leads con referral (clic en anuncio)
       if (message.referral?.ctwa_clid) {
         const click_id = message.referral.ctwa_clid;
         const ad_id = message.referral.source_id;
@@ -97,16 +96,47 @@ app.post("/facebook/webhook", async (req, res) => {
             ctr: 0,
           };
 
-          // 3️⃣ Ajustar la secuencia de IDs de leads
+          // 3️⃣ Ajustar secuencia de IDs de leads
           const maxIdRes = await pool.query("SELECT MAX(id) AS max_id FROM leads");
           const maxId = maxIdRes.rows[0].max_id || 0;
           const nextVal = maxId === 0 ? 1 : maxId + 1;
           await pool.query(`SELECT setval('leads_id_seq', $1, false)`, [nextVal]);
 
-          // 4️⃣ Enviar lead a Kommo
+          // 4️⃣ Guardar o actualizar métricas por anuncio y fecha
+          const today = new Date().toISOString().split("T")[0];
+
+          await pool.query(`
+            INSERT INTO ads_metrics (
+              ad_id, ad_name, adset_id, adset_name, campaign_id, campaign_name,
+              impressions, reach, clicks, spend, ctr, date, updated_at
+            )
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
+            ON CONFLICT (ad_id, date) DO UPDATE
+            SET impressions = EXCLUDED.impressions,
+                reach = EXCLUDED.reach,
+                clicks = EXCLUDED.clicks,
+                spend = EXCLUDED.spend,
+                ctr = EXCLUDED.ctr,
+                updated_at = NOW();
+          `, [
+            ad_info.ad_id,
+            ad_info.ad_name,
+            ad_info.adset_id,
+            ad_info.adset_name,
+            ad_info.campaign_id,
+            ad_info.campaign_name,
+            metrics.impressions,
+            metrics.reach,
+            metrics.clicks,
+            metrics.spend,
+            metrics.ctr,
+            today
+          ]);
+
+          // 5️⃣ Enviar lead a Kommo
           const { lead_id, status } = await sendToKommo(name, from, click_id, ad_info, text);
 
-          // 5️⃣ Guardar el lead en la tabla leads (SOLO columnas necesarias)
+          // 6️⃣ Insertar lead en leads
           const queryLead = `
             INSERT INTO leads (
               name, phone, click_id, ad_id, message, created_at, lead_id, status
@@ -126,40 +156,6 @@ app.post("/facebook/webhook", async (req, res) => {
 
           const result = await pool.query(queryLead, valuesLead);
           console.log("✅ Lead insertado con ID:", result.rows[0].id);
-
-          // 6️⃣ Guardar o actualizar métricas por anuncio y fecha
-          const today = new Date().toISOString().split("T")[0];
-          const queryMetrics = `
-            INSERT INTO ads_metrics (
-              ad_id, ad_name, adset_id, adset_name, campaign_id, campaign_name,
-              impressions, reach, clicks, spend, ctr, date, updated_at
-            )
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
-            ON CONFLICT (ad_id, date) DO UPDATE
-            SET impressions = EXCLUDED.impressions,
-                reach = EXCLUDED.reach,
-                clicks = EXCLUDED.clicks,
-                spend = EXCLUDED.spend,
-                ctr = EXCLUDED.ctr,
-                updated_at = NOW();
-          `;
-          const valuesMetrics = [
-            ad_info.ad_id,
-            ad_info.ad_name,
-            ad_info.adset_id,
-            ad_info.adset_name,
-            ad_info.campaign_id,
-            ad_info.campaign_name,
-            metrics.impressions,
-            metrics.reach,
-            metrics.clicks,
-            metrics.spend,
-            metrics.ctr,
-            today,
-          ];
-
-          await pool.query(queryMetrics, valuesMetrics);
-          console.log(`📊 Métricas actualizadas para anuncio ${ad_info.ad_id} en fecha ${today}`);
 
         } catch (err) {
           console.error("❌ Error en el webhook:", err.response?.data || err.message);
