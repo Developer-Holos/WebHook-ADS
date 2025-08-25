@@ -73,8 +73,15 @@ app.post("/facebook/webhook", async (req, res) => {
 
         try {
           // 1️⃣ Obtener info del anuncio desde Meta
+          
+          //Prueba PARA ESTRES
+          const fbRes = { data: { id: "TEST_AD", name: "Test Ad" } };
+          const metricsRes = { data: { data: [ { impressions: 0, reach: 0, clicks: 0, spend: 0, ctr: 0 } ] } };
+          const lead_id = `LEAD_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+          const status = "Nueva Consulta";
+
           const url = `https://graph.facebook.com/v19.0/${ad_id}?fields=id,name,adset{id,name,campaign{id,name}}&access_token=${ACCESS_TOKEN}`;
-          const fbRes = await axios.get(url);
+          // const fbRes = await axios.get(url);
           const adData = fbRes.data;
 
           const ad_info = {
@@ -88,7 +95,7 @@ app.post("/facebook/webhook", async (req, res) => {
 
           // 2️⃣ Obtener métricas del anuncio (hoy)
           const metricsUrl = `https://graph.facebook.com/v23.0/${ad_id}/insights?fields=impressions,reach,spend,clicks,ctr&date_preset=today&access_token=${ACCESS_TOKEN}`;
-          const metricsRes = await axios.get(metricsUrl);
+          // const metricsRes = await axios.get(metricsUrl);
           const metrics = metricsRes.data?.data?.[0] || {
             impressions: 0,
             reach: 0,
@@ -129,7 +136,7 @@ app.post("/facebook/webhook", async (req, res) => {
           ]);
 
           // 4️⃣ Enviar lead a Kommo
-          const { lead_id, status } = await sendToKommo(name, from, click_id, ad_info, text);
+          // const { lead_id, status } = await sendToKommo(name, from, click_id, ad_info, text);
 
           // 5️⃣ Insertar lead en leads
           const queryLead = `
@@ -265,6 +272,7 @@ function getClickIdFromFields(fields = []) {
   const field = fields.find(f => f.field_name === "Click ID");
   return field?.values?.[0]?.value || null;
 }
+
 
 app.post("/kommo/webhook", async (req, res) => {
   const leadUpdate = req.body?.leads?.status?.[0];
