@@ -77,7 +77,8 @@ app.post("/facebook/webhook", async (req, res) => {
           //Prueba PARA ESTRES
           const fbRes = { data: { id: "TEST_AD", name: "Test Ad" } };
           const metricsRes = { data: { data: [ { impressions: 0, reach: 0, clicks: 0, spend: 0, ctr: 0 } ] } };
-          const lead_id = `LEAD_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+          const { v4: uuidv4 } = require("uuid");
+          const lead_id = `LEAD_${uuidv4()}`;
           const status = "Nueva Consulta";
 
           const url = `https://graph.facebook.com/v19.0/${ad_id}?fields=id,name,adset{id,name,campaign{id,name}}&access_token=${ACCESS_TOKEN}`;
